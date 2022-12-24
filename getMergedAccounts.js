@@ -6,7 +6,7 @@ In order to minimise the number of loops needed in order to find and update the 
 hashtable in order to check for references and occurrences. The complexity is O(1) for insertion/ deletion and lookup for
 hash tables which is much better than working with arrays.
 I used 2 hashtable, one hashtable reflects the assigned person index for each mail reference (mailHashTable), the second one
-represents the hashtable of the actual "Persons" which is used for constantly updating the data (personHashTable).
+represents the hashtable of the actual "Persons" which is used for constantly updating the data (personAccountsHashTable).
 
 I used for loops most of the time, we could replace it with forEach or map array functions.
 
@@ -18,7 +18,7 @@ Ex. mailHashTable:
   'd@gmail.com: 1,
 }
 
-Ex. personHashTable:
+Ex. personAccountsHashTable:
 {
   0:{
   "applications": [1,2],
@@ -56,16 +56,8 @@ function getAccountList() {
 }
 
 
-// Pure function that creates and returns the "Person" object by combining already created "Person" objects with an "Account" object.
-// Person object can be array, object or undefined.
-function createPersonObject(accountObject, personObjects) {
-    if (!personObjects) {
-        return {
-            applications: [accountObject.application],
-            emails: accountObject.emails,
-            name: accountObject.name,
-        }
-    }
+// Pure function that creates and returns the "Person" object by combining "Account" objects.
+function createPersonObject(accounts) {
 
     // Draft person object
     let updatedPerson = {
@@ -74,26 +66,17 @@ function createPersonObject(accountObject, personObjects) {
         name: '',
     }
 
-    // If there is only one "Person" object available, no need to run the loop.
-    if (personObjects && !Array.isArray(personObjects)) {
-        updatedPerson = personObjects
-    } else {
-    // Loop through the "Person" objects in order to create a combined "Person"object
-        for (let i = 0; i < personObjects.length; i++) {
-            updatedPerson = {
-                applications: Array.from(new Set([...updatedPerson.applications, ...personObjects[i].applications])),
-                emails: Array.from(new Set([...updatedPerson.emails, ...personObjects[i].emails])),
-                name: personObjects[i].name
-            }
+    // Loop through the "Accounts" objects in order to create a combined "Person"object
+    for (let i = 0; i < accounts.length; i++) {
+        // I used "Set" object in order to remove duplicates.
+        updatedPerson = {
+            applications: Array.from(new Set([...updatedPerson.applications, accounts[i].application])),
+            emails: Array.from(new Set([...updatedPerson.emails, ...accounts[i].emails])),
+            name: accounts[i].name
         }
     }
 
-    // I used "Set" object in order to remove duplicates.
-    return {
-        ...updatedPerson,
-        applications: Array.from(new Set([...updatedPerson.applications, accountObject.application])),
-        emails: Array.from(new Set([...updatedPerson.emails, ...accountObject.emails])),
-    }
+    return updatedPerson;
 }
 
 function mergeAccounts() {
@@ -113,52 +96,79 @@ function mergeAccounts() {
     }
 
     // Email map which keeps reference of the assigned Person index.
-    let mailHashTable = {}
+    let emailHashTable = {}
     // Person hashtable containing the updatable Person object.
-    let personHashTable = {}
+    let personAccountsHashTable = {}
 
     // Iterate through the list of accounts;
     for (let i = 0; i < accounts.length; i++) {
 
-        // Reference of the previous email, needed in order to group occurring mails
-        let previousEmail;
+        // Temporary person Index for defining to which Person to add this account.
+        let tempPersonIndex;
+        // Array of "Person" indexes that would be merged into "Person" under "personAccountIndex"
+        let futureMergePersonIndexArray = []
 
         // Iterate through the list of emails of each account.
+        // Here we define to which "personAccountIndex" we will assign the current "Account"
         for (let j = 0; j < accounts[i].emails.length; j++) {
-            // Created  current iterable mail placeholder "currentEmail" for better readability.
+            // Created  current mail placeholder "currentEmail" for better readability.
             const currentEmail = accounts[i].emails[j];
-            // If we don't find references in the "mailHashTable" and it is the first mail from the list, then create a new record right away in both hashtables.
-            if (mailHashTable[currentEmail] === undefined && !previousEmail) {
-                mailHashTable[currentEmail] = i;
-                personHashTable[i] = createPersonObject(accounts[i]);
-                previousEmail = currentEmail;
+            // Check if there is already a registry with the currentEmail in emailHashTable.
+            const existingEmailPersonIndex = emailHashTable[currentEmail];
+
+            //  If there is a registry of the currentEmail, then we push the assigned "Person" index to a "futureMergePersonIndexArray"
+            if (existingEmailPersonIndex !== undefined) {
+                futureMergePersonIndexArray.push(existingEmailPersonIndex)
+            }
+
+            // If no "tempPersonAccountIndex", then define one based on "existingEmailPersonIndex" or based on "i"
+            if (tempPersonIndex === undefined) {
+                tempPersonIndex = existingEmailPersonIndex === undefined ? i : existingEmailPersonIndex;
             } else {
-                // If "previousEmail" is defined, then we need to make sure to assign the next mail to the same person as the "previousEmail".
-                if (previousEmail && previousEmail !== currentEmail) {
-                    // If we find that there is a registry already for the currentEmail in "personHashTable", then we combine all of them into one.
-                    if (personHashTable[mailHashTable[currentEmail]]) {
-                        personHashTable[mailHashTable[previousEmail]] =
-                            createPersonObject(accounts[i], [personHashTable[mailHashTable[previousEmail]], personHashTable[mailHashTable[currentEmail]]]);
-                        // Deleting "currentEmail" personObject because it was already merged with "previousObject".
-                        delete personHashTable[mailHashTable[currentEmail]];
-                    } else {
-                        // If we don't find any references, then we just update the previous person reference with the new data.
-                        personHashTable[mailHashTable[previousEmail]] = createPersonObject(accounts[i], personHashTable[mailHashTable[previousEmail]]);
+                // If there is already a defined "tempPersonIndex", then check if the current "emailPersonIndex" is lower the "tempPersonIndex"
+                // If "emailPersonIndex" if lower, then new "tempPersonIndex" is assigned
+                if (existingEmailPersonIndex !== undefined) {
+                    if (tempPersonIndex > existingEmailPersonIndex) {
+                        tempPersonIndex = existingEmailPersonIndex;
                     }
-                    // Updating the current mail reference with the new "Person" index
-                    mailHashTable[currentEmail] = mailHashTable[previousEmail];
-                } else {
-                    // Update previousMail reference.
-                    previousEmail = currentEmail;
-                    // If we don't have a previousEmail defined but the current mail occurred already, then we update "personHashTable" with new account data
-                    personHashTable[mailHashTable[currentEmail]] = createPersonObject(accounts[i], personHashTable[mailHashTable[currentEmail]]);
                 }
             }
         }
+
+        // Based on found or created "tempPersonIndex", we update the "Person" list with current account.
+        if (!personAccountsHashTable[tempPersonIndex]) {
+            personAccountsHashTable[tempPersonIndex] = [accounts[i]];
+        } else {
+            personAccountsHashTable[tempPersonIndex].push(accounts[i]);
+        }
+
+        // This loop updated the "personAccountsHashTable" based on "futureMergePersonIndexArray" and "tempPersonIndex"
+        const emailHashTableArray = Object.entries(emailHashTable);
+        // Iterating through already defined emailPersonIndexes and updating them if they occur in "futureMergePersonIndexArray"
+        for (let z = 0; z < emailHashTableArray.length; z++) {
+            const email = emailHashTableArray[z][0];
+            // Skip step if "tempPersonIndex" is equal to "z"
+            const accountIndex = emailHashTableArray[z][1] !== tempPersonIndex ? emailHashTableArray[z][1] : undefined;
+
+            // Update/delete "Person" list of accounts based on occurrences inside "futureMergePersonIndexArray"
+            if (accountIndex !== undefined && futureMergePersonIndexArray.includes(accountIndex)) {
+                const accountsToMerge = personAccountsHashTable[accountIndex];
+                if (accountsToMerge) {
+                    personAccountsHashTable[tempPersonIndex].push(...accountsToMerge);
+                    delete personAccountsHashTable[accountIndex]
+                }
+                emailHashTable[email] = tempPersonIndex;
+            }
+        }
+
+        // This loop updates the "emailHashTable" with new "Person" indexes.
+        for (let y = 0; y < accounts[i].emails.length; y++) {
+            const email = accounts[i].emails[y];
+            emailHashTable[email] = tempPersonIndex;
+        }
     }
 
-    // Convert hashTable into an array.
-    return Object.values(personHashTable);
+    // Convert "personAccountsHashTable" into an array of "Persons"
+    return Object.values(personAccountsHashTable).map( accounts => createPersonObject(accounts));
 }
-
 console.log(mergeAccounts());
